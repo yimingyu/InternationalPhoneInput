@@ -9,6 +9,7 @@ import android.os.Build;
 import android.telephony.PhoneNumberFormattingTextWatcher;
 import android.telephony.TelephonyManager;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
@@ -26,8 +27,10 @@ import java.util.Locale;
 
 public class IntlPhoneInput extends RelativeLayout implements View.OnClickListener{
     private final String DEFAULT_COUNTRY = Locale.getDefault().getCountry();
+    // UI Views
     private EditText mPhoneEdit;
-    private PhoneNumberWatcher mPhoneNumberWatcher = new PhoneNumberWatcher(DEFAULT_COUNTRY);
+
+    private PhoneNumberWatcher mPhoneNumberWatcher;
 
     //Util
     private PhoneNumberUtil mPhoneUtil = PhoneNumberUtil.getInstance();
@@ -38,22 +41,30 @@ public class IntlPhoneInput extends RelativeLayout implements View.OnClickListen
     private IntlPhoneInputListener mIntlPhoneInputListener;
 
 
-
     public static final String ACTION_SEND_RESULT = IntlPhoneInput.class.getName()+ ".action.SendResult";
     public static final String EXTRA_COUNTRY = IntlPhoneInput.class.getName() + ".extra.Country";
     private Context mContext;
 
     private TextView mCountryCode;
-
     private TextView mCountryName;
-
     private EditText mPhoneNumber;
     private ImageView countryIcon;
 
+    /**
+     * Constructor
+     *
+     * @param context Context
+     */
     public IntlPhoneInput(Context context) {
         this(context,null);
     }
 
+    /**
+     * Constructor
+     *
+     * @param context Context
+     * @param attrs   AttributeSet
+     */
     public IntlPhoneInput(Context context, AttributeSet attrs) {
         this(context, attrs,0);
     }
@@ -62,47 +73,38 @@ public class IntlPhoneInput extends RelativeLayout implements View.OnClickListen
         super(context, attrs, defStyleAttr);
 
         inflate(getContext(), R.layout.intl_phone_input, this);
-        mContext = context;
+
         mCountries = CountriesFetcher.getCountries(getContext());
-
+        /**
+         * Phone text field
+         */
         mPhoneEdit = (EditText) findViewById(R.id.intl_phone_edit__phone);
-        mPhoneEdit.addTextChangedListener(mPhoneNumberWatcher);
-
+//        PhoneInputView view = (PhoneInputView) findViewById(R.id.phone_input);
+//        view.setCountrySelectorType(PhoneInputView.SELECTOR_TYPE_ACTIVITY);
+        mContext = context;
+        mCountryName = (TextView) findViewById(R.id.country_name);
         mCountryCode = (TextView) findViewById(R.id.country_code);
         mPhoneNumber = (EditText) findViewById(R.id.intl_phone_edit__phone);
-        mCountryName = (TextView) findViewById(R.id.country_name);
-        mCountryName.setOnClickListener(this);
         countryIcon=(ImageView)findViewById(R.id.country_icon);
-        countryIcon.setOnClickListener(this);
 
+        findViewById(R.id.rl_country).setOnClickListener(this);
         setDefault();
+        updateRegion();
     }
 
-    /**
-     * Hide keyboard from phoneEdit field
-     */
-    public void hideKeyboard() {
-        InputMethodManager inputMethodManager = (InputMethodManager) getContext().getApplicationContext().getSystemService(Context.INPUT_METHOD_SERVICE);
-        inputMethodManager.hideSoftInputFromWindow(mPhoneEdit.getWindowToken(), 0);
-    }
     /**
      * Receive country select result
      */
     private BroadcastReceiver mResultReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            Country country = intent.getParcelableExtra(EXTRA_COUNTRY);
-            countryIcon.setImageResource(getFlagResource(country));
-            mCountryName.setText(country.getName());
-            mCountryCode.setText("+"+country.getDialCode());
-            mSelectedCountry=country;
+            mSelectedCountry = intent.getParcelableExtra(EXTRA_COUNTRY);
+            updateRegion();
         }
     };
     private int getFlagResource(Country country) {
         return getContext().getResources().getIdentifier("country_" + country.getIso().toLowerCase(), "drawable", getContext().getPackageName());
     }
-
-
 
     @Override
     protected void onAttachedToWindow() {
@@ -125,12 +127,18 @@ public class IntlPhoneInput extends RelativeLayout implements View.OnClickListen
         try {
             TelephonyManager telephonyManager = (TelephonyManager) getContext().getSystemService(Context.TELEPHONY_SERVICE);
             String iso = telephonyManager.getNetworkCountryIso();
+            Log.e("IntlPhoneInput","通过TelephonyManager获取的iso是："+iso);
             setEmptyDefault(iso);
-            String phone = telephonyManager.getLine1Number();
-            if (phone != null && !phone.isEmpty()) {
-                this.setNumber(phone);
+            try{
+                String phone = telephonyManager.getLine1Number();
+                if (phone != null && !phone.isEmpty()) {
+                    this.setNumber(phone);
+                }
+            }catch (SecurityException e) {
+                Log.e("IntlPhoneInput","没有读取到手机号，不做任何处理");
             }
         } catch (SecurityException e) {
+            Log.e("IntlPhoneInput","没有读取通讯录权限，默认iso为Locale设置的语言");
             setEmptyDefault();
         }
     }
@@ -155,6 +163,18 @@ public class IntlPhoneInput extends RelativeLayout implements View.OnClickListen
         setEmptyDefault(null);
     }
 
+    private void updateRegion(){
+        countryIcon.setImageResource(getFlagResource(mSelectedCountry));
+        mCountryName.setText(mSelectedCountry.getName());
+        mCountryCode.setText("+"+mSelectedCountry.getDialCode());
+
+        if(mPhoneNumberWatcher!=null) mPhoneEdit.removeTextChangedListener(mPhoneNumberWatcher);
+        mPhoneNumberWatcher = new PhoneNumberWatcher(mSelectedCountry.getIso());
+        mPhoneEdit.addTextChangedListener(mPhoneNumberWatcher);
+        mPhoneEdit.setText(mPhoneEdit.getText());
+    }
+
+
     /**
      * Set hint number for country
      */
@@ -170,7 +190,7 @@ public class IntlPhoneInput extends RelativeLayout implements View.OnClickListen
     @Override
     public void onClick(View v) {
         int viewId = v.getId();
-        if (viewId == R.id.country_icon || viewId== R.id.country_name || viewId == R.id.country_other) {
+        if (viewId==R.id.rl_country||viewId == R.id.country_icon || viewId== R.id.country_name || viewId == R.id.country_other) {
             Intent intent = new Intent(mContext, CountrySelectorActivity.class);
             mContext.startActivity(intent);
         }
@@ -196,6 +216,19 @@ public class IntlPhoneInput extends RelativeLayout implements View.OnClickListen
         @Override
         public void onTextChanged(CharSequence s, int start, int before, int count) {
             super.onTextChanged(s, start, before, count);
+            try {
+                String iso = null;
+                if (mSelectedCountry != null) {
+                    iso = mSelectedCountry.getIso();
+                }
+                Phonenumber.PhoneNumber phoneNumber = mPhoneUtil.parse(s.toString(), iso);
+                iso = mPhoneUtil.getRegionCodeForNumber(phoneNumber);
+                if (iso != null) {
+                    int countryIdx = mCountries.indexOfIso(iso);
+                }
+            } catch (NumberParseException ignored) {
+            }
+
             if (mIntlPhoneInputListener != null) {
                 boolean validity = isValid();
                 if (validity != lastValidity) {
@@ -218,6 +251,8 @@ public class IntlPhoneInput extends RelativeLayout implements View.OnClickListen
                 iso = mSelectedCountry.getIso();
             }
             Phonenumber.PhoneNumber phoneNumber = mPhoneUtil.parse(number, iso);
+
+            int countryIdx = mCountries.indexOfIso(mPhoneUtil.getRegionCodeForNumber(phoneNumber));
             String format=mPhoneUtil.format(phoneNumber, PhoneNumberUtil.PhoneNumberFormat.NATIONAL);
             mPhoneEdit.setText(format);
         } catch (NumberParseException ignored) {
@@ -256,12 +291,13 @@ public class IntlPhoneInput extends RelativeLayout implements View.OnClickListen
      */
     @SuppressWarnings("unused")
     public Phonenumber.PhoneNumber getPhoneNumber() {
-        //此处如果dialCode有4位数，电话号码就会转换出错
+        //此处如果dialCode有4位数，电话号码就会转换
         try {
             String iso = null;
             if (mSelectedCountry != null) {
                 iso = mSelectedCountry.getIso();
             }
+            Log.e("IntlPhoneInput","默认国家是"+DEFAULT_COUNTRY+"当前选择国家的iso是"+iso);
             return mPhoneUtil.parse(mPhoneEdit.getText().toString(), iso);
         } catch (NumberParseException ignored) {
             return null;
@@ -310,6 +346,16 @@ public class IntlPhoneInput extends RelativeLayout implements View.OnClickListen
     public void setEnabled(boolean enabled) {
         super.setEnabled(enabled);
         mPhoneEdit.setEnabled(enabled);
+    }
+
+
+
+    /**
+     * Hide keyboard from phoneEdit field
+     */
+    public void hideKeyboard() {
+        InputMethodManager inputMethodManager = (InputMethodManager) getContext().getApplicationContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+        inputMethodManager.hideSoftInputFromWindow(mPhoneEdit.getWindowToken(), 0);
     }
 
     /**
