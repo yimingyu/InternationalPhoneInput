@@ -9,8 +9,8 @@
 
 主要修改：  
 1、修复了IntlPhoneInput中初始时如果获取到手机号则功能失常的Bug。  
-2、修得了因手机系统语言更改引起的相关BUG。
-2、选择国家和区号的形式从原IntlPhoneInput中Spinner改成Activity,实现方法是在View的onAttachedToWindow方法中注册广播接收器接收CountrySelectorActivity发送的结果。  
+2、修得了因手机系统语言更改引起的相关BUG。    
+3、选择国家和区号的形式从原IntlPhoneInput中Spinner改成Activity,实现方法是在View的onAttachedToWindow方法中注册广播接收器接收CountrySelectorActivity发送的结果。  
 需要改进： 
 1、当dialCode超过3位如美国(+1684)时，输入14789568706，控件是检查号码 +1   4789568706的合格性，而不是+1684 14789568706，内部控件这样做的原因还有待调查。     
 2、界面的美化，以及考虑是否用中文表示所有国家和地区的名称。   
